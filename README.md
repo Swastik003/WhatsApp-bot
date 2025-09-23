@@ -14,12 +14,20 @@ A powerful WhatsApp automation tool that allows you to scan QR codes, establish 
 
 ## Prerequisites
 
+### For Local Development:
 - Node.js (version 14 or higher)
 - npm or yarn
 - A WhatsApp account
 - Chrome/Chromium browser (for Puppeteer)
 
+### For Docker Deployment:
+- Docker and Docker Compose
+- A WhatsApp account
+- Server with at least 1GB RAM and 1 CPU core
+
 ## Installation
+
+### Option 1: Local Development
 
 1. **Clone or download this repository**
    ```bash
@@ -39,6 +47,42 @@ A powerful WhatsApp automation tool that allows you to scan QR codes, establish 
 
 4. **Open your browser**
    Navigate to `http://localhost:3000`
+
+### Option 2: Docker Deployment (Recommended for Production)
+
+#### Quick Start with Docker
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd whatsapp-qr
+   ```
+
+2. **Configure environment variables**
+   ```bash
+   cp env.example .env
+   # Edit .env file with your production settings
+   ```
+
+3. **Deploy with Docker Compose**
+   ```bash
+   docker-compose up -d
+   ```
+
+4. **Access your application**
+   Navigate to `http://localhost:3000` or your configured domain
+
+#### Production Deployment
+
+For detailed production deployment instructions including:
+- Server setup and configuration
+- Nginx reverse proxy setup
+- SSL certificate installation
+- Security hardening
+- Backup strategies
+- Monitoring and troubleshooting
+
+**See the complete [Docker Deployment Guide](DEPLOYMENT.md)**
 
 ## Usage
 
@@ -353,6 +397,28 @@ CORS_ORIGIN=*
 WHATSAPP_CLIENT_ID=whatsapp-qr-scanner
 ```
 
+### Docker Configuration
+
+When using Docker, you can configure the application through environment variables in the `docker-compose.yml` file or by creating a `.env` file:
+
+```yaml
+# docker-compose.yml environment section
+environment:
+  - NODE_ENV=production
+  - PORT=3000
+  - BASE_URL=${BASE_URL:-http://localhost:3000}
+  - MASTER_KEY=${MASTER_KEY:-change_this_secure_key}
+  - CORS_ORIGIN=${CORS_ORIGIN:-*}
+  - WHATSAPP_CLIENT_ID=${WHATSAPP_CLIENT_ID:-whatsapp-qr-scanner}
+```
+
+**Important Docker Notes:**
+- WhatsApp session data is persisted in Docker volumes (`whatsapp_session` and `whatsapp_cache`)
+- API keys are persisted in the `api-keys.json` file mounted as a volume
+- The container runs as a non-root user for security
+- Resource limits are configured to prevent memory issues
+- Health checks are enabled for monitoring
+
 ### Environment Variables:
 
 - **PORT**: Server port (default: 3000)
@@ -397,12 +463,45 @@ CORS_ORIGIN=https://yourdomain.com
    - Ensure file format is supported
    - Try with smaller files first
 
+5. **Docker-specific issues**
+   - Container won't start: Check logs with `docker-compose logs`
+   - Permission issues: Ensure proper file ownership
+   - Memory issues: Check resource limits in docker-compose.yml
+   - Session data lost: Verify volume mounts are working correctly
+
 ### Development Mode
 
 To run in development mode with auto-restart:
 
 ```bash
 npm run dev
+```
+
+### Docker Commands
+
+For Docker deployments, use these commands:
+
+```bash
+# Start the application
+docker-compose up -d
+
+# Stop the application
+docker-compose down
+
+# View logs
+docker-compose logs -f
+
+# Restart the application
+docker-compose restart
+
+# Update and restart
+docker-compose pull && docker-compose up -d
+
+# Check container status
+docker-compose ps
+
+# Access container shell
+docker-compose exec whatsapp-qr sh
 ```
 
 ## Security Notes
