@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  whatsapp-qr:
+    build: .
+    container_name: whatsapp-qr-scanner
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - BASE_URL=${BASE_URL:-http://localhost:3000}
+      - MASTER_KEY=${MASTER_KEY:-change_this_secure_key}
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+      - WHATSAPP_CLIENT_ID=${WHATSAPP_CLIENT_ID:-whatsapp-qr-scanner}
+    volumes:
+      # Persist WhatsApp session data
+      - whatsapp_session:/app/.wwebjs_auth
+      - whatsapp_cache:/app/.wwebjs_cache
+      # Persist API keys
+      - ./api-keys.json:/app/api-keys.json
+    networks:
+      - whatsapp-network
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    # Health check
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/config', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  whatsapp_session:
+    driver: local
+  whatsapp_cache:
+    driver: local
+
+networks:
+  whatsapp-network:
+    driver: bridge

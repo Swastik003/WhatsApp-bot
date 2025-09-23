@@ -1,0 +1,12 @@
+{
+  "ignore": [
+    "api-keys.json",
+    ".env",
+    ".wwebjs_auth/**/*",
+    ".wwebjs_cache/**/*",
+    "node_modules/**/*",
+    "*.log"
+  ],
+  "ext": "js,json",
+  "delay": 1000
+}

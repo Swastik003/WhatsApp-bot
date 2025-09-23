@@ -1,0 +1,6 @@
+api-keys.json
+.env
+.wwebjs_auth/
+.wwebjs_cache/
+*.log
+node_modules/
