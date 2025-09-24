@@ -36,6 +36,22 @@ const upload = multer({
     }
 });
 
+// Configure Chromium user data dir (avoid profile lock across restarts)
+const CHROME_USER_DIR = process.env.CHROME_USER_DIR || '/tmp/chromium';
+try {
+    fs.ensureDirSync(CHROME_USER_DIR);
+    // Clean up Chromium singleton lock files if left from an unclean shutdown
+    const singletonFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket'];
+    for (const file of singletonFiles) {
+        const target = path.join(CHROME_USER_DIR, file);
+        if (fs.existsSync(target)) {
+            try { fs.removeSync(target); } catch (_) { /* ignore */ }
+        }
+    }
+} catch (e) {
+    console.warn('Chromium user dir setup warning:', e.message);
+}
+
 // WhatsApp client configuration
 const client = new Client({
     authStrategy: new LocalAuth({
@@ -51,7 +67,8 @@ const client = new Client({
             '--no-first-run',
             '--no-zygote',
             '--single-process',
-            '--disable-gpu'
+            '--disable-gpu',
+            '--remote-debugging-port=0'
         ]
     }
 });
