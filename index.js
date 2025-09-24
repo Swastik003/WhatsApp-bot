@@ -10,6 +10,45 @@ const path = require('path');
 const multer = require('multer');
 require('dotenv').config();
 
+// Resolve a sensible Chromium/Chrome executable path per-OS
+function resolveBrowserExecutablePath() {
+    // If user provided an explicit path, respect it
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+        return process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+    const platform = process.platform;
+    if (platform === 'linux') {
+        // Default path inside our Docker image
+        return '/usr/bin/chromium-browser';
+    }
+    if (platform === 'win32') {
+        const candidates = [
+            // Chrome
+            'C:/Program Files/Google/Chrome/Application/chrome.exe',
+            'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+            // Edge (Puppeteer can drive Chromium-based Edge too)
+            'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+            'C:/Program Files/Microsoft/Edge/Application/msedge.exe'
+        ];
+        for (const p of candidates) {
+            try { if (fs.existsSync(p)) return p; } catch (_) {}
+        }
+        return null; // Let Puppeteer try its default (may fail with puppeteer-core)
+    }
+    if (platform === 'darwin') {
+        const candidates = [
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'
+        ];
+        for (const p of candidates) {
+            try { if (fs.existsSync(p)) return p; } catch (_) {}
+        }
+        return null;
+    }
+    return null;
+}
+const RESOLVED_BROWSER_PATH = resolveBrowserExecutablePath();
+
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
@@ -39,7 +78,6 @@ const upload = multer({
 // Clean up common Chromium/Puppeteer temp profile lock files (container-safe)
 try {
     const tmpDir = '/tmp';
-    const forcedProfileDir = process.env.CHROME_USER_DATA_DIR || path.join(tmpDir, 'puppeteer_profile');
     const candidates = [
         // Puppeteer temp profiles
         'puppeteer_dev_profile-',
@@ -57,9 +95,6 @@ try {
             try { fs.removeSync(target); } catch (_) { /* ignore */ }
         }
     }
-    // Ensure a clean, dedicated user data dir to avoid cross-container locks
-    try { fs.removeSync(forcedProfileDir); } catch (_) { /* ignore */ }
-    try { fs.ensureDirSync(forcedProfileDir); } catch (_) { /* ignore */ }
 } catch (e) {
     console.warn('Chromium temp cleanup warning:', e.message);
 }
@@ -71,8 +106,7 @@ const client = new Client({
     }),
     puppeteer: {
         headless: true,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
-        userDataDir: process.env.CHROME_USER_DATA_DIR || '/tmp/puppeteer_profile',
+        executablePath: RESOLVED_BROWSER_PATH || undefined,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -81,7 +115,6 @@ const client = new Client({
             '--no-first-run',
             '--no-zygote',
             '--disable-gpu',
-            `--user-data-dir=${process.env.CHROME_USER_DATA_DIR || '/tmp/puppeteer_profile'}`,
             '--password-store=basic',
             '--use-mock-keychain'
         ]
