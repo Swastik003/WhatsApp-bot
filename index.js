@@ -7,6 +7,7 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const fs = require('fs-extra');
 const path = require('path');
+const multer = require('multer');
 require('dotenv').config();
 
 const app = express();
@@ -25,6 +26,15 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.static('public'));
+
+// Multipart/form-data upload (memory storage)
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        // 16MB default max size; adjust if you need larger media
+        fileSize: 16 * 1024 * 1024
+    }
+});
 
 // WhatsApp client configuration
 const client = new Client({
@@ -251,12 +261,14 @@ app.get('/api/status', requireApiKey, (req, res) => {
     });
 });
 
-app.post('/api/send-message', requireApiKey, async (req, res) => {
+app.post('/api/send-message', requireApiKey, upload.single('media'), async (req, res) => {
     if (!isClientReady) {
         return res.status(400).json({ error: 'WhatsApp client is not ready' });
     }
 
-    const { number, message, media } = req.body;
+    // Support both JSON and multipart/form-data
+    const number = req.body.number;
+    const message = req.body.message;
 
     if (!number || !message) {
         return res.status(400).json({ error: 'Number and message are required' });
@@ -267,12 +279,21 @@ app.post('/api/send-message', requireApiKey, async (req, res) => {
         const cleanNumber = number.replace(/\D/g, '');
         const chatId = cleanNumber.includes('@c.us') ? cleanNumber : `${cleanNumber}@c.us`;
 
-        if (media) {
-            // Send media message
-            const mediaMessage = new MessageMedia(media.mimetype, media.data, media.filename);
+        // Build media from either uploaded file (multipart) or JSON body
+        const hasUpload = !!req.file;
+        const bodyMedia = req.body.media ? (() => {
+            try { return typeof req.body.media === 'string' ? JSON.parse(req.body.media) : req.body.media; } catch (_) { return null; }
+        })() : null;
+
+        if (hasUpload) {
+            const file = req.file;
+            const base64 = file.buffer.toString('base64');
+            const mediaMessage = new MessageMedia(file.mimetype, base64, file.originalname);
+            await client.sendMessage(chatId, mediaMessage, { caption: message });
+        } else if (bodyMedia && bodyMedia.data && bodyMedia.mimetype) {
+            const mediaMessage = new MessageMedia(bodyMedia.mimetype, bodyMedia.data, bodyMedia.filename || 'file');
             await client.sendMessage(chatId, mediaMessage, { caption: message });
         } else {
-            // Send text message
             await client.sendMessage(chatId, message);
         }
 
