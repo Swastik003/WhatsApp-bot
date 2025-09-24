@@ -36,20 +36,28 @@ const upload = multer({
     }
 });
 
-// Configure Chromium user data dir (avoid profile lock across restarts)
-const CHROME_USER_DIR = process.env.CHROME_USER_DIR || '/tmp/chromium';
+// Clean up common Chromium/Puppeteer temp profile lock files (container-safe)
 try {
-    fs.ensureDirSync(CHROME_USER_DIR);
-    // Clean up Chromium singleton lock files if left from an unclean shutdown
-    const singletonFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket'];
-    for (const file of singletonFiles) {
-        const target = path.join(CHROME_USER_DIR, file);
-        if (fs.existsSync(target)) {
+    const tmpDir = '/tmp';
+    const candidates = [
+        // Puppeteer temp profiles
+        'puppeteer_dev_profile-',
+        'puppeteer-',
+        // Chromium leftover locks
+        '.org.chromium.',
+        'SingletonLock',
+        'SingletonCookie',
+        'SingletonSocket'
+    ];
+    const entries = fs.readdirSync(tmpDir);
+    for (const entry of entries) {
+        if (candidates.some(prefix => entry.startsWith(prefix))) {
+            const target = path.join(tmpDir, entry);
             try { fs.removeSync(target); } catch (_) { /* ignore */ }
         }
     }
 } catch (e) {
-    console.warn('Chromium user dir setup warning:', e.message);
+    console.warn('Chromium temp cleanup warning:', e.message);
 }
 
 // WhatsApp client configuration
@@ -618,7 +626,7 @@ io.on('connection', (socket) => {
 // Start the server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server running on ${BASE_URL}`);
     console.log('Starting WhatsApp client...');
     client.initialize();
 });
