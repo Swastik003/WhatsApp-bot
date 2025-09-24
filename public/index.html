@@ -1,0 +1,2575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp QR Scanner & Message Sender</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #25d366;
+            --primary-dark: #128c7e;
+            --secondary-color: #667eea;
+            --accent-color: #764ba2;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --error-color: #dc3545;
+            --bg-primary: #f8f9fa;
+            --bg-secondary: #ffffff;
+            --text-primary: #212529;
+            --text-secondary: #6c757d;
+            --border-color: #dee2e6;
+            --shadow-light: 0 2px 10px rgba(0,0,0,0.1);
+            --shadow-medium: 0 4px 20px rgba(0,0,0,0.15);
+            --shadow-heavy: 0 8px 30px rgba(0,0,0,0.2);
+            --border-radius: 12px;
+            --border-radius-small: 8px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2d2d2d;
+            --text-primary: #ffffff;
+            --text-secondary: #b0b0b0;
+            --border-color: #404040;
+            --shadow-light: 0 2px 10px rgba(0,0,0,0.3);
+            --shadow-medium: 0 4px 20px rgba(0,0,0,0.4);
+            --shadow-heavy: 0 8px 30px rgba(0,0,0,0.5);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, var(--secondary-color) 0%, var(--accent-color) 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: var(--text-primary);
+            transition: var(--transition);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: var(--bg-secondary);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-heavy);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .theme-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: var(--bg-primary);
+            border: 2px solid var(--border-color);
+            border-radius: 50px;
+            padding: 8px 12px;
+            cursor: pointer;
+            color: var(--text-primary);
+            font-size: 18px;
+            transition: var(--transition);
+            z-index: 1000;
+        }
+
+        .theme-toggle:hover {
+            background: var(--primary-color);
+            color: white;
+            transform: scale(1.1);
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="50" cy="50" r="1" fill="rgba(255,255,255,0.02)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+            animation: float 20s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(30px, -30px) rotate(120deg); }
+            66% { transform: translate(-20px, 20px) rotate(240deg); }
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 2;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            position: relative;
+            z-index: 2;
+            margin-bottom: 20px;
+        }
+
+        .header-stats {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255,255,255,0.1);
+            padding: 10px 20px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .stat-item i {
+            font-size: 20px;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 30px;
+            padding: 30px;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: var(--bg-primary);
+            border-radius: var(--border-radius);
+            padding: 25px;
+            box-shadow: var(--shadow-light);
+            border: 1px solid var(--border-color);
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-medium);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .card-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+        }
+
+        .card-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .status-badge::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 4px;
+            height: 100%;
+            background: currentColor;
+            opacity: 0.3;
+        }
+
+        .status-badge.connected {
+            background: rgba(40, 167, 69, 0.1);
+            color: var(--success-color);
+        }
+
+        .status-badge.waiting {
+            background: rgba(255, 193, 7, 0.1);
+            color: #856404;
+        }
+
+        .status-badge.error {
+            background: rgba(220, 53, 69, 0.1);
+            color: var(--error-color);
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            position: relative;
+        }
+
+        .status-indicator.connected {
+            background: var(--success-color);
+            box-shadow: 0 0 15px rgba(40, 167, 69, 0.6);
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.disconnected {
+            background: var(--error-color);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+        }
+
+        .qr-display {
+            text-align: center;
+            padding: 30px;
+            background: var(--bg-secondary);
+            border-radius: var(--border-radius);
+            border: 2px dashed var(--border-color);
+            transition: var(--transition);
+            position: relative;
+        }
+
+        .qr-display:hover {
+            border-color: var(--primary-color);
+            background: rgba(37, 211, 102, 0.05);
+        }
+
+        .qr-display.active {
+            border-color: var(--primary-color);
+            background: rgba(37, 211, 102, 0.05);
+            animation: qrGlow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes qrGlow {
+            from { box-shadow: 0 0 20px rgba(37, 211, 102, 0.3); }
+            to { box-shadow: 0 0 30px rgba(37, 211, 102, 0.6); }
+        }
+
+        #qrcode {
+            margin: 20px auto;
+            padding: 20px;
+            background: white;
+            border-radius: var(--border-radius-small);
+            box-shadow: var(--shadow-light);
+            display: inline-block;
+            transition: var(--transition);
+        }
+
+        #qrcode img {
+            border-radius: var(--border-radius-small);
+            transition: var(--transition);
+        }
+
+        #qrcode:hover img {
+            transform: scale(1.02);
+        }
+
+        #qrTerminal {
+            display: inline-block;
+            text-align: left;
+            padding: 16px 20px;
+            margin-top: 16px;
+            background: #1a1a1a;
+            color: #00ff00;
+            border-radius: var(--border-radius-small);
+            box-shadow: var(--shadow-medium);
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 11px;
+            line-height: 1.2;
+            white-space: pre;
+            max-width: 100%;
+            overflow-x: auto;
+            border: 1px solid #333;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+            position: relative;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input-group {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .input-group i {
+            position: absolute;
+            left: 15px;
+            color: var(--text-secondary);
+            font-size: 16px;
+            z-index: 2;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 16px 20px;
+            border: 2px solid var(--border-color);
+            border-radius: var(--border-radius-small);
+            font-size: 16px;
+            transition: var(--transition);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-family: inherit;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.1);
+        }
+
+        .input-group input {
+            padding-left: 45px;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 120px;
+            line-height: 1.6;
+        }
+
+        .form-group select {
+            cursor: pointer;
+            appearance: none;
+            background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>');
+            background-repeat: no-repeat;
+            background-position: right 15px center;
+            background-size: 16px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+            color: white;
+            border: none;
+            padding: 16px 30px;
+            border-radius: var(--border-radius-small);
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.6s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(37, 211, 102, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            background: var(--text-secondary);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn:disabled::before {
+            display: none;
+        }
+
+        .btn-secondary {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            border: 2px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, var(--error-color) 0%, #c82333 100%);
+        }
+
+        .btn-danger:hover {
+            box-shadow: 0 8px 25px rgba(220, 53, 69, 0.4);
+        }
+
+        .file-upload-area {
+            border: 2px dashed var(--border-color);
+            border-radius: var(--border-radius-small);
+            padding: 40px 20px;
+            text-align: center;
+            transition: var(--transition);
+            cursor: pointer;
+            background: var(--bg-primary);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .file-upload-area::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(37, 211, 102, 0.05) 0%, rgba(37, 211, 102, 0.02) 100%);
+            opacity: 0;
+            transition: var(--transition);
+        }
+
+        .file-upload-area:hover::before {
+            opacity: 1;
+        }
+
+        .file-upload-area:hover {
+            border-color: var(--primary-color);
+            transform: translateY(-2px);
+        }
+
+        .file-upload-area.dragover {
+            border-color: var(--primary-color);
+            background: rgba(37, 211, 102, 0.1);
+            transform: scale(1.02);
+        }
+
+        .file-upload-icon {
+            font-size: 48px;
+            color: var(--text-secondary);
+            margin-bottom: 15px;
+            transition: var(--transition);
+        }
+
+        .file-upload-area:hover .file-upload-icon {
+            color: var(--primary-color);
+            transform: scale(1.1);
+        }
+
+        .file-info {
+            margin-top: 15px;
+            padding: 12px;
+            background: var(--bg-primary);
+            border-radius: var(--border-radius-small);
+            border: 1px solid var(--border-color);
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .profile-section {
+            text-align: center;
+            padding: 30px;
+            background: var(--bg-primary);
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+        }
+
+        .profile-avatar {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: 4px solid var(--primary-color);
+            object-fit: cover;
+            box-shadow: var(--shadow-medium);
+            transition: var(--transition);
+            margin-bottom: 20px;
+        }
+
+        .profile-avatar:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 30px rgba(37, 211, 102, 0.4);
+        }
+
+        .profile-placeholder {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: 4px solid var(--primary-color);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 40px;
+            font-weight: bold;
+            margin: 0 auto 20px;
+            box-shadow: var(--shadow-medium);
+            transition: var(--transition);
+        }
+
+        .profile-placeholder:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 30px rgba(37, 211, 102, 0.4);
+        }
+
+        .profile-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 5px;
+        }
+
+        .profile-status {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .info-item {
+            background: var(--bg-primary);
+            padding: 20px;
+            border-radius: var(--border-radius-small);
+            border: 1px solid var(--border-color);
+            transition: var(--transition);
+        }
+
+        .info-item:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-light);
+        }
+
+        .info-label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+        }
+
+        .info-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            word-break: break-all;
+        }
+
+        .tab-navigation {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid var(--border-color);
+            overflow-x: auto;
+            padding-bottom: 2px;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            padding: 15px 25px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            color: var(--text-secondary);
+            border-bottom: 3px solid transparent;
+            white-space: nowrap;
+            font-size: 15px;
+            position: relative;
+        }
+
+        .tab-btn:hover {
+            color: var(--primary-color);
+            background: rgba(37, 211, 102, 0.05);
+        }
+
+        .tab-btn.active {
+            color: var(--primary-color);
+            border-bottom-color: var(--primary-color);
+            background: rgba(37, 211, 102, 0.05);
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .api-endpoints {
+            display: grid;
+            gap: 20px;
+        }
+
+        .endpoint-card {
+            background: var(--bg-primary);
+            border-radius: var(--border-radius);
+            padding: 25px;
+            border-left: 4px solid var(--primary-color);
+            box-shadow: var(--shadow-light);
+            transition: var(--transition);
+        }
+
+        .endpoint-card:hover {
+            transform: translateX(5px);
+            box-shadow: var(--shadow-medium);
+        }
+
+        .endpoint-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .endpoint-description {
+            color: var(--text-secondary);
+            margin-bottom: 15px;
+            line-height: 1.6;
+        }
+
+        .code-block {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius-small);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .code-block pre {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #f8f8f2;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: var(--transition);
+            opacity: 0;
+        }
+
+        .code-block:hover .copy-btn {
+            opacity: 1;
+        }
+
+        .copy-btn:hover {
+            background: var(--primary-dark);
+            transform: scale(1.05);
+        }
+
+        .webhook-section {
+            background: var(--bg-primary);
+            border-radius: var(--border-radius);
+            padding: 30px;
+            box-shadow: var(--shadow-light);
+            border: 1px solid var(--border-color);
+        }
+
+        .webhook-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .webhook-description {
+            color: var(--text-secondary);
+            margin-bottom: 25px;
+            line-height: 1.6;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .btn-group .btn {
+            flex: 1;
+            padding: 12px 20px;
+            font-size: 14px;
+        }
+
+        .webhook-payload {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius-small);
+            overflow: hidden;
+        }
+
+        .webhook-payload pre {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #f8f8f2;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+
+        .examples-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+        }
+
+        .example-card {
+            background: var(--bg-primary);
+            border-radius: var(--border-radius);
+            padding: 25px;
+            box-shadow: var(--shadow-light);
+            border: 1px solid var(--border-color);
+            transition: var(--transition);
+        }
+
+        .example-card:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-medium);
+        }
+
+        .example-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--primary-color);
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .result-message {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: var(--border-radius-small);
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .result-message.success {
+            background: rgba(40, 167, 69, 0.1);
+            color: var(--success-color);
+            border: 1px solid rgba(40, 167, 69, 0.2);
+        }
+
+        .result-message.error {
+            background: rgba(220, 53, 69, 0.1);
+            color: var(--error-color);
+            border: 1px solid rgba(220, 53, 69, 0.2);
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                gap: 20px;
+                padding: 20px;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .examples-grid {
+                grid-template-columns: 1fr;
+            }
+            }
+            
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2.5rem;
+            }
+
+            .header p {
+                font-size: 1rem;
+            }
+
+            .header-stats {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .tab-navigation {
+                gap: 5px;
+            }
+
+            .tab-btn {
+                padding: 12px 15px;
+                font-size: 14px;
+            }
+
+            .btn-group {
+                flex-direction: column;
+            }
+
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: var(--border-radius-small);
+            color: white;
+            font-weight: 500;
+            z-index: 9999;
+            animation: slideInRight 0.3s ease-out;
+            max-width: 400px;
+        }
+
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(100px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .notification.success {
+            background: var(--success-color);
+        }
+
+        .notification.error {
+            background: var(--error-color);
+        }
+
+        .notification.info {
+            background: var(--primary-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Theme Toggle -->
+        <button class="theme-toggle" id="themeToggle" title="Toggle Dark/Light Mode">
+            <i class="fas fa-moon"></i>
+        </button>
+
+        <!-- API Key Management -->
+        <div class="api-key-section" style="position: absolute; top: 20px; left: 20px; z-index: 1000; background: rgba(255,255,255,0.9); padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+            <input type="password" id="apiKeyInput" placeholder="Enter API Key" value="" style="margin-right: 10px; padding: 8px; border-radius: 4px; border: 1px solid #ddd; width: 200px;">
+            <button id="saveApiKeyBtn" onclick="saveApiKey()" style="padding: 8px 16px; background: #25d366; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                <i class="fas fa-key"></i> Save
+            </button>
+            <button id="generateApiKeyBtn" onclick="showGenerateKeyModal()" style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 5px;">
+                <i class="fas fa-plus"></i> Generate
+            </button>
+        </div>
+
+        <div class="header">
+            <h1>📱 WhatsApp QR Scanner</h1>
+            <p>Advanced WhatsApp automation with QR code authentication</p>
+
+            <div class="header-stats">
+                <div class="stat-item">
+                    <i class="fas fa-qrcode"></i>
+                    <span>QR Authentication</span>
+                </div>
+                <div class="stat-item">
+                    <i class="fas fa-book"></i>
+                    <span>API Documentation</span>
+                </div>
+                <div class="stat-item">
+                    <i class="fas fa-comments"></i>
+                    <span>Message Broadcasting</span>
+                </div>
+                <div class="stat-item">
+                    <i class="fas fa-users"></i>
+                    <span>Group Management</span>
+                </div>
+                <div class="stat-item">
+                    <i class="fas fa-bolt"></i>
+                    <span>Real-time Sync</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- Left Column - QR Code and Status -->
+            <div class="dashboard-grid">
+                <!-- Connection Status Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon">
+                            <i class="fas fa-link"></i>
+                        </div>
+                        <div>
+                            <h3 class="card-title">Connection Status</h3>
+                        </div>
+                    </div>
+
+                    <div class="status-badge" id="status">
+                        <span class="status-indicator" id="statusIndicator"></span>
+                        <span id="statusText">Initializing...</span>
+                    </div>
+
+                    <!-- QR Code Display -->
+                    <div class="qr-display" id="qrDisplay">
+                        <div id="qrcode"></div>
+                        <pre id="qrTerminal" style="display:none;"></pre>
+                    </div>
+                </div>
+
+                <!-- Session Information Card -->
+                <div class="card" id="sessionCard">
+                    <div class="card-header">
+                        <div class="card-icon">
+                            <i class="fas fa-user-circle"></i>
+                        </div>
+                        <div>
+                            <h3 class="card-title">Session Info</h3>
+                        </div>
+                    </div>
+
+                    <div class="profile-section" id="profileSection">
+                        <div class="profile-placeholder" id="profilePicPlaceholder">
+                            <i class="fas fa-mobile-alt"></i>
+                        </div>
+                        <div class="profile-name" id="profileName">Connecting...</div>
+                        <div class="profile-status" id="profileStatus">Please wait</div>
+                    </div>
+
+                    <div class="info-grid" id="sessionDetails">
+                        <div class="info-item">
+                            <div class="info-label">WhatsApp ID</div>
+                            <div class="info-value" id="whatsappId">Loading...</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Display Name</div>
+                            <div class="info-value" id="displayName">Loading...</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Platform</div>
+                            <div class="info-value" id="platform">Loading...</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Status</div>
+                            <div class="info-value" id="connectionStatus">Connecting...</div>
+                        </div>
+                    </div>
+
+                    <button type="button" class="btn btn-danger" id="logoutBtn">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span>Disconnect</span>
+                    </button>
+                </div>
+
+                <!-- Quick Actions Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon">
+                            <i class="fas fa-bolt"></i>
+                        </div>
+                        <div>
+                            <h3 class="card-title">Quick Actions</h3>
+                        </div>
+                    </div>
+
+                    <button type="button" class="btn btn-secondary" id="refreshStatusBtn">
+                        <i class="fas fa-sync-alt"></i>
+                        <span>Refresh Status</span>
+                    </button>
+
+                    <button type="button" class="btn btn-secondary" id="clearCacheBtn">
+                        <i class="fas fa-trash"></i>
+                        <span>Clear Cache</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Column - Message Forms -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">
+                        <i class="fas fa-comments"></i>
+                    </div>
+                    <div>
+                        <h3 class="card-title">Message Center</h3>
+                    </div>
+                </div>
+
+                <div class="tab-navigation">
+                    <button class="tab-btn active" data-tab="single">Single Message</button>
+                    <button class="tab-btn" data-tab="broadcast">Broadcast</button>
+                    <button class="tab-btn" data-tab="group">Group Message</button>
+                </div>
+
+                <!-- Single Message Tab -->
+                <div class="tab-content active" id="single-tab">
+                    <form id="messageForm">
+                        <div class="form-group">
+                            <label for="phoneNumber">
+                                <i class="fas fa-phone"></i>
+                                Phone Number
+                            </label>
+                            <div class="input-group">
+                                <i class="fas fa-mobile-alt"></i>
+                                <input type="text" id="phoneNumber" placeholder="Enter phone number with country code" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="message">
+                                <i class="fas fa-envelope"></i>
+                                Message
+                            </label>
+                            <textarea id="message" placeholder="Type your message here..." required></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Media Attachment (Optional)</label>
+                            <div class="file-upload-area" id="fileUploadArea">
+                                <div class="file-upload-icon">
+                                    <i class="fas fa-cloud-upload-alt"></i>
+                                </div>
+                                <div>Click to upload or drag and drop</div>
+                                <div style="font-size: 12px; margin-top: 5px;">Images, videos, audio, or documents</div>
+                                <input type="file" id="mediaFile" accept="image/*,video/*,audio/*,application/pdf">
+                            </div>
+                            <div class="file-info" id="fileInfo"></div>
+                        </div>
+
+                        <button type="submit" class="btn" id="sendBtn" disabled>
+                            <i class="fas fa-paper-plane"></i>
+                            <span>Send Message</span>
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Broadcast Tab -->
+                <div class="tab-content" id="broadcast-tab">
+                    <form id="broadcastForm">
+                        <div class="form-group">
+                            <label for="broadcastNumbers">
+                                <i class="fas fa-list"></i>
+                                Phone Numbers
+                            </label>
+                            <textarea id="broadcastNumbers" placeholder="Enter phone numbers (one per line)&#10;Example:&#10;+1234567890&#10;+0987654321&#10;+15551234567" rows="8"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="broadcastMessage">
+                                <i class="fas fa-bullhorn"></i>
+                                Broadcast Message
+                            </label>
+                            <textarea id="broadcastMessage" placeholder="Type your broadcast message here..." required></textarea>
+                        </div>
+
+                        <button type="submit" class="btn" id="broadcastBtn" disabled>
+                            <i class="fas fa-broadcast-tower"></i>
+                            <span>Send Broadcast</span>
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Group Message Tab -->
+                <div class="tab-content" id="group-tab">
+                    <form id="groupForm">
+                        <div class="form-group">
+                            <label for="groupSelect">
+                                <i class="fas fa-users"></i>
+                                Select Group
+                            </label>
+                            <div style="display: flex; gap: 10px;">
+                                <select id="groupSelect">
+                                    <option value="">Choose a group...</option>
+                                </select>
+                                <button type="button" class="btn btn-secondary" id="refreshGroupsBtn" title="Refresh Groups">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="groupMessage">
+                                <i class="fas fa-comments"></i>
+                                Group Message
+                            </label>
+                            <textarea id="groupMessage" placeholder="Type your group message here..." required></textarea>
+                        </div>
+
+                        <button type="submit" class="btn" id="groupBtn" disabled>
+                            <i class="fas fa-users"></i>
+                            <span>Send to Group</span>
+                        </button>
+                    </form>
+                </div>
+
+                <div class="result-message" id="result"></div>
+            </div>
+        </div>
+
+        <!-- API Documentation Section -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon">
+                    <i class="fas fa-code"></i>
+                </div>
+                <div>
+                    <h3 class="card-title">API Documentation</h3>
+                </div>
+            </div>
+
+            <div class="tab-navigation">
+                <button class="tab-btn active" data-tab="endpoints">API Endpoints</button>
+                <button class="tab-btn" data-tab="webhook">Webhook Setup</button>
+                <button class="tab-btn" data-tab="examples">cURL Examples</button>
+            </div>
+
+            <!-- API Endpoints Tab -->
+            <div class="tab-content active" id="endpoints-tab">
+                <div class="api-auth-notice" style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                    <h4 style="color: #856404; margin-bottom: 10px;">
+                        <i class="fas fa-key"></i>
+                        API Key Authentication Required
+                    </h4>
+                    <p style="color: #856404; margin: 0;">
+                        All API endpoints require authentication using the <code>x-api-key</code> header. 
+                        Generate your API key using the master key in the top-left corner of this page.
+                    </p>
+                </div>
+                <div class="api-endpoints">
+                    <div class="endpoint-card">
+                        <div class="endpoint-title">
+                            <i class="fas fa-info-circle"></i>
+                            <h3>GET /api/status</h3>
+                        </div>
+                        <div class="endpoint-description">Get connection status and QR code</div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('status-curl')">Copy</button>
+                            <pre id="status-curl">curl -X GET http://localhost:3000/api/status \
+  -H "x-api-key: your_api_key_here"</pre>
+                        </div>
+                    </div>
+
+                    <div class="endpoint-card">
+                        <div class="endpoint-title">
+                            <i class="fas fa-user"></i>
+                            <h3>GET /api/client-info</h3>
+                        </div>
+                        <div class="endpoint-description">Get WhatsApp client information and profile picture</div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('client-curl')">Copy</button>
+                            <pre id="client-curl">curl -X GET http://localhost:3000/api/client-info \
+  -H "x-api-key: your_api_key_here"</pre>
+                        </div>
+                    </div>
+
+                    <div class="endpoint-card">
+                        <div class="endpoint-title">
+                            <i class="fas fa-paper-plane"></i>
+                            <h3>POST /api/send-message</h3>
+                        </div>
+                        <div class="endpoint-description">Send message to individual contact</div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('send-curl')">Copy</button>
+                            <pre id="send-curl">curl -X POST http://localhost:3000/api/send-message \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your_api_key_here" \
+  -d '{
+    "number": "1234567890",
+    "message": "Hello World!"
+  }'</pre>
+                        </div>
+                    </div>
+
+                    <div class="endpoint-card">
+                        <div class="endpoint-title">
+                            <i class="fas fa-broadcast-tower"></i>
+                            <h3>POST /api/send-broadcast</h3>
+                        </div>
+                        <div class="endpoint-description">Send message to multiple contacts</div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('broadcast-curl')">Copy</button>
+                            <pre id="broadcast-curl">curl -X POST http://localhost:3000/api/send-broadcast \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your_api_key_here" \
+  -d '{
+    "numbers": ["1234567890", "0987654321"],
+    "message": "Hello Everyone!"
+  }'</pre>
+                        </div>
+                    </div>
+
+                    <div class="endpoint-card">
+                        <div class="endpoint-title">
+                            <i class="fas fa-users"></i>
+                            <h3>GET /api/groups</h3>
+                        </div>
+                        <div class="endpoint-description">Get all WhatsApp groups</div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('groups-curl')">Copy</button>
+                            <pre id="groups-curl">curl -X GET http://localhost:3000/api/groups \
+  -H "x-api-key: your_api_key_here"</pre>
+                        </div>
+                    </div>
+
+                    <div class="endpoint-card">
+                        <div class="endpoint-title">
+                            <i class="fas fa-comments"></i>
+                            <h3>POST /api/send-group-message</h3>
+                        </div>
+                        <div class="endpoint-description">Send message to a WhatsApp group</div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('group-curl')">Copy</button>
+                            <pre id="group-curl">curl -X POST http://localhost:3000/api/send-group-message \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your_api_key_here" \
+  -d '{
+    "groupId": "120363123456789012@g.us",
+    "message": "Hello Group!"
+  }'</pre>
+                        </div>
+                    </div>
+
+                    <div class="endpoint-card">
+                        <div class="endpoint-title">
+                            <i class="fas fa-address-book"></i>
+                            <h3>GET /api/contacts</h3>
+                        </div>
+                        <div class="endpoint-description">Get all WhatsApp contacts</div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('contacts-curl')">Copy</button>
+                            <pre id="contacts-curl">curl -X GET http://localhost:3000/api/contacts \
+  -H "x-api-key: your_api_key_here"</pre>
+                        </div>
+                    </div>
+
+                    <div class="endpoint-card">
+                        <div class="endpoint-title">
+                            <i class="fas fa-sign-out-alt"></i>
+                            <h3>POST /api/logout</h3>
+                        </div>
+                        <div class="endpoint-description">Logout and disconnect WhatsApp session</div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('logout-curl')">Copy</button>
+                            <pre id="logout-curl">curl -X POST http://localhost:3000/api/logout \
+  -H "x-api-key: your_api_key_here"</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Webhook Tab -->
+            <div class="tab-content" id="webhook-tab">
+                <div class="webhook-section">
+                    <div class="webhook-title">
+                        <i class="fas fa-link"></i>
+                        <h3>Webhook Configuration</h3>
+                    </div>
+                    <div class="webhook-description">
+                        Set up webhooks to receive real-time notifications when messages are received.
+                    </div>
+
+                    <div class="form-group">
+                        <label for="webhookUrl">Webhook URL:</label>
+                        <div class="input-group">
+                            <i class="fas fa-globe"></i>
+                            <input type="url" id="webhookUrl" placeholder="https://your-server.com/webhook">
+                        </div>
+                    </div>
+                    <div class="btn-group">
+                        <button type="button" class="btn" id="setWebhookBtn">Set Webhook</button>
+                        <button type="button" class="btn btn-secondary" id="getWebhookBtn">Get Webhook</button>
+                        <button type="button" class="btn btn-danger" id="deleteWebhookBtn">Delete Webhook</button>
+                    </div>
+
+                    <div class="webhook-payload">
+                        <h4 style="margin-bottom: 15px; color: var(--primary-color);">
+                            <i class="fas fa-code"></i>
+                            Webhook Payload Format:
+                        </h4>
+                        <pre><code>{
+  "id": "message_id",
+  "from": "sender_number@c.us",
+  "to": "your_number@c.us",
+  "body": "Message content",
+  "timestamp": 1234567890,
+  "type": "chat",
+  "isGroup": false,
+  "isFromMe": false,
+  "contact": "Sender Name",
+  "chatId": "sender_number@c.us"
+}</code></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- cURL Examples Tab -->
+            <div class="tab-content" id="examples-tab">
+                <div class="examples-grid">
+                    <div class="example-card">
+                        <div class="example-title">
+                            <i class="fas fa-terminal"></i>
+                            <h4>1. Check Status</h4>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('status-curl')">Copy</button>
+                            <pre id="status-curl">curl -X GET http://localhost:3000/api/status</pre>
+                        </div>
+                    </div>
+
+                    <div class="example-card">
+                        <div class="example-title">
+                            <i class="fas fa-user"></i>
+                            <h4>2. Get Client Info</h4>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('client-curl')">Copy</button>
+                            <pre id="client-curl">curl -X GET http://localhost:3000/api/client-info</pre>
+                        </div>
+                    </div>
+
+                    <div class="example-card">
+                        <div class="example-title">
+                            <i class="fas fa-paper-plane"></i>
+                            <h4>3. Send Text Message</h4>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('send-curl')">Copy</button>
+                            <pre id="send-curl">curl -X POST http://localhost:3000/api/send-message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "number": "1234567890",
+    "message": "Hello from WhatsApp API!"
+  }'</pre>
+                        </div>
+                    </div>
+
+                    <div class="example-card">
+                        <div class="example-title">
+                            <i class="fas fa-image"></i>
+                            <h4>4. Send Message with Media</h4>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('media-curl')">Copy</button>
+                            <pre id="media-curl">curl -X POST http://localhost:3000/api/send-message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "number": "1234567890",
+    "message": "Check out this image!",
+    "media": {
+      "data": "base64_encoded_image_data",
+      "mimetype": "image/jpeg",
+      "filename": "image.jpg"
+    }
+  }'</pre>
+                        </div>
+                    </div>
+
+                    <div class="example-card">
+                        <div class="example-title">
+                            <i class="fas fa-broadcast-tower"></i>
+                            <h4>5. Send Broadcast Message</h4>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('broadcast-curl')">Copy</button>
+                            <pre id="broadcast-curl">curl -X POST http://localhost:3000/api/send-broadcast \
+  -H "Content-Type: application/json" \
+  -d '{
+    "numbers": ["1234567890", "0987654321", "5555555555"],
+    "message": "Important announcement for everyone!"
+  }'</pre>
+                        </div>
+                    </div>
+
+                    <div class="example-card">
+                        <div class="example-title">
+                            <i class="fas fa-users"></i>
+                            <h4>6. Get Groups</h4>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('groups-curl')">Copy</button>
+                            <pre id="groups-curl">curl -X GET http://localhost:3000/api/groups</pre>
+                        </div>
+                    </div>
+
+                    <div class="example-card">
+                        <div class="example-title">
+                            <i class="fas fa-comments"></i>
+                            <h4>7. Send Group Message</h4>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('group-curl')">Copy</button>
+                            <pre id="group-curl">curl -X POST http://localhost:3000/api/send-group-message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "groupId": "120363123456789012@g.us",
+    "message": "Hello everyone in the group!"
+  }'</pre>
+                        </div>
+                    </div>
+
+                    <div class="example-card">
+                        <div class="example-title">
+                            <i class="fas fa-image"></i>
+                            <h4>8. Send Group Message with Media</h4>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('group-media-curl')">Copy</button>
+                            <pre id="group-media-curl">curl -X POST http://localhost:3000/api/send-group-message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "groupId": "120363123456789012@g.us",
+    "message": "Check out this image!",
+    "media": {
+      "data": "base64_encoded_image_data",
+      "mimetype": "image/jpeg",
+      "filename": "image.jpg"
+    }
+  }'</pre>
+                        </div>
+                    </div>
+
+                    <div class="example-card">
+                        <div class="example-title">
+                            <i class="fas fa-address-book"></i>
+                            <h4>9. Get Contacts</h4>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('contacts-curl')">Copy</button>
+                            <pre id="contacts-curl">curl -X GET http://localhost:3000/api/contacts</pre>
+                        </div>
+                    </div>
+
+                    <div class="example-card">
+                        <div class="example-title">
+                            <i class="fas fa-sign-out-alt"></i>
+                            <h4>10. Logout</h4>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyToClipboard('logout-curl')">Copy</button>
+                            <pre id="logout-curl">curl -X POST http://localhost:3000/api/logout</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let isReady = false;
+        let hasQr = false;
+        let selectedFile = null;
+        let currentTheme = 'light';
+
+        // DOM elements
+        const themeToggle = document.getElementById('themeToggle');
+        const statusBadge = document.getElementById('status');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const qrDisplay = document.getElementById('qrDisplay');
+        const qrDiv = document.getElementById('qrcode');
+        const sendBtn = document.getElementById('sendBtn');
+        const broadcastBtn = document.getElementById('broadcastBtn');
+        const messageForm = document.getElementById('messageForm');
+        const broadcastForm = document.getElementById('broadcastForm');
+        const groupForm = document.getElementById('groupForm');
+        const resultDiv = document.getElementById('result');
+        const fileUploadArea = document.getElementById('fileUploadArea');
+        const fileInput = document.getElementById('mediaFile');
+        const fileInfo = document.getElementById('fileInfo');
+        const sessionCard = document.getElementById('sessionCard');
+        const profileSection = document.getElementById('profileSection');
+        const profilePicPlaceholder = document.getElementById('profilePicPlaceholder');
+        const profileName = document.getElementById('profileName');
+        const profileStatus = document.getElementById('profileStatus');
+        const whatsappId = document.getElementById('whatsappId');
+        const displayName = document.getElementById('displayName');
+        const platform = document.getElementById('platform');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const refreshStatusBtn = document.getElementById('refreshStatusBtn');
+        const clearCacheBtn = document.getElementById('clearCacheBtn');
+        const webhookUrl = document.getElementById('webhookUrl');
+        const setWebhookBtn = document.getElementById('setWebhookBtn');
+        const getWebhookBtn = document.getElementById('getWebhookBtn');
+        const deleteWebhookBtn = document.getElementById('deleteWebhookBtn');
+        const groupSelect = document.getElementById('groupSelect');
+        const groupMessage = document.getElementById('groupMessage');
+        const refreshGroupsBtn = document.getElementById('refreshGroupsBtn');
+        const groupBtn = document.getElementById('groupBtn');
+        const broadcastMessage = document.getElementById('broadcastMessage');
+        const broadcastNumbers = document.getElementById('broadcastNumbers');
+
+        // Tab navigation
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tabName = btn.getAttribute('data-tab');
+                showTab(tabName);
+            });
+        });
+
+        // Theme toggle functionality
+        themeToggle.addEventListener('click', () => {
+            toggleTheme();
+        });
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-theme', currentTheme);
+            themeToggle.innerHTML = currentTheme === 'light' ? '<i class="fas fa-moon"></i>' : '<i class="fas fa-sun"></i>';
+            localStorage.setItem('theme', currentTheme);
+        }
+
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        if (savedTheme === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
+            currentTheme = 'dark';
+        }
+
+        // Show notification
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `
+                <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i>
+                <span>${message}</span>
+            `;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.remove();
+            }, 5000);
+        }
+
+        // Tab switching
+        function showTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Remove active class from all tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Show selected tab content
+            document.getElementById(tabName + '-tab').classList.add('active');
+
+            // Add active class to clicked button
+            document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+        }
+
+        // QR rendering (PNG + SVG fallback) + polling
+        function renderQr(qrPayload, size = 256) {
+            // Always clear the QR div completely
+            qrDiv.innerHTML = '';
+
+            if (!qrPayload) {
+                qrDiv.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: var(--text-secondary);">
+                        <i class="fas fa-qrcode" style="font-size: 48px; margin-bottom: 15px; opacity: 0.5;"></i>
+                        <div>Waiting for QR code...</div>
+                    </div>
+                `;
+                return;
+            }
+
+            // PNG image
+            const img = document.createElement('img');
+            img.width = size;
+            img.height = size;
+            img.alt = 'WhatsApp QR Code';
+            img.style.imageRendering = 'pixelated';
+            img.style.borderRadius = '8px';
+            img.style.boxShadow = '0 4px 20px rgba(0,0,0,0.1)';
+            qrDiv.appendChild(img);
+
+            // If server provided PNG, prefer it
+            if (qrPayload && typeof qrPayload === 'object' && qrPayload.png) {
+                img.src = qrPayload.png;
+            } else {
+                const qrText = typeof qrPayload === 'string' ? qrPayload : qrPayload?.text;
+                if (qrText) {
+                    try {
+                        QRCode.toDataURL(qrText, {
+                            width: size,
+                            margin: 2,
+                            color: { dark: '#000000', light: '#ffffff' }
+                        }, (error, url) => {
+                            if (error) {
+                                console.error('QR PNG error:', error);
+                            } else {
+                                img.src = url;
+                            }
+                        });
+                    } catch (e) {
+                        console.error('QR PNG render failed:', e);
+                    }
+                }
+            }
+
+            // Add glow effect when QR is active
+            qrDisplay.classList.add('active');
+        }
+
+        let qrPollTimer = null;
+        let lastQrText = null; // Track last QR code to detect changes
+        let apiKey = localStorage.getItem('whatsapp_api_key') || '';
+        let baseUrl = window.location.origin; // Default to current origin
+
+        // Function to load server configuration
+        async function loadServerConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const config = await response.json();
+                baseUrl = config.baseUrl || window.location.origin;
+                console.log('Server base URL:', baseUrl);
+            } catch (error) {
+                console.log('Using default base URL:', baseUrl);
+            }
+        }
+
+        // Function to get API headers with authentication
+        function getApiHeaders() {
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            if (apiKey) {
+                headers['x-api-key'] = apiKey;
+            }
+            return headers;
+        }
+
+        function startQrPolling() {
+            if (qrPollTimer) return;
+            qrPollTimer = setInterval(async () => {
+                try {
+                    const resp = await fetch('/api/status', {
+                        headers: getApiHeaders()
+                    });
+                    const data = await resp.json();
+
+                    // Only render QR if not ready and we have a QR code
+                    if (!isReady && data && (data.qr || data.qrPng)) {
+                        const currentQrText = data.qr || data.qrPng;
+
+                        // Only update if QR code has changed
+                        if (currentQrText !== lastQrText) {
+                            lastQrText = currentQrText;
+                            statusDiv.className = 'status waiting';
+                            statusDiv.textContent = 'Scan QR code with your WhatsApp app';
+                            renderQr({ text: data.qr, png: data.qrPng }, 256);
+
+                            // Also render terminal-like QR
+                            try {
+                                const qrPre = document.getElementById('qrTerminal');
+                                qrPre.style.display = 'inline-block';
+                                const ascii = await QRCode.toString(data.qr, { type: 'terminal' });
+                                qrPre.textContent = ascii;
+                            } catch (_) {
+                                const qrPre = document.getElementById('qrTerminal');
+                                qrPre.style.display = 'none';
+                            }
+                        }
+                    } else if (!isReady && !data.qr && !data.qrPng) {
+                        // No QR available, show waiting message
+                        lastQrText = null;
+                        renderQr(null);
+                        const qrPre = document.getElementById('qrTerminal');
+                        qrPre.textContent = '';
+                        qrPre.style.display = 'none';
+                    }
+                } catch (e) {
+                    // ignore polling errors
+                    console.log('QR polling error:', e.message);
+                }
+            }, 2000);
+        }
+
+        function stopQrPolling() {
+            if (qrPollTimer) {
+                clearInterval(qrPollTimer);
+                qrPollTimer = null;
+                lastQrText = null; // Reset QR tracking
+            }
+        }
+
+        // Socket events
+        // Socket event handlers
+        socket.on('qr', async (qr) => {
+            lastQrText = null;
+            statusBadge.className = 'status-badge waiting';
+            statusIndicator.className = 'status-indicator disconnected';
+            statusText.textContent = 'Scan QR code with WhatsApp';
+            renderQr(qr, 256);
+            qrDisplay.classList.remove('active');
+            showNotification('New QR code generated. Please scan with WhatsApp.', 'info');
+        });
+
+        socket.on('ready', (data) => {
+            statusBadge.className = 'status-badge connected';
+            statusIndicator.className = 'status-indicator connected';
+            statusText.textContent = 'WhatsApp Connected';
+            qrDiv.innerHTML = '';
+            qrDisplay.classList.remove('active');
+            isReady = true;
+            hasQr = false;
+            lastQrText = null;
+            stopQrPolling();
+            sendBtn.disabled = false;
+            broadcastBtn.disabled = false;
+            groupBtn.disabled = false;
+            sessionCard.classList.remove('hidden');
+            loadSessionInfo();
+            loadGroups();
+            showNotification('WhatsApp connected successfully!', 'success');
+        });
+
+        socket.on('authenticated', (data) => {
+            statusBadge.className = 'status-badge waiting';
+            statusIndicator.className = 'status-indicator disconnected';
+            statusText.textContent = 'Authenticating...';
+        });
+
+        socket.on('auth_failure', (data) => {
+            statusBadge.className = 'status-badge error';
+            statusIndicator.className = 'status-indicator disconnected';
+            statusText.textContent = 'Authentication Failed';
+            showNotification('Authentication failed: ' + data.message, 'error');
+        });
+
+        socket.on('disconnected', (data) => {
+            statusBadge.className = 'status-badge error';
+            statusIndicator.className = 'status-indicator disconnected';
+            statusText.textContent = 'Disconnected';
+            isReady = false;
+            sendBtn.disabled = true;
+            broadcastBtn.disabled = true;
+            groupBtn.disabled = true;
+            hideSessionInfo();
+            lastQrText = null;
+            startQrPolling();
+            showNotification('Disconnected: ' + data.message, 'error');
+        });
+
+        socket.on('session_timeout', (data) => {
+            statusBadge.className = 'status-badge waiting';
+            statusIndicator.className = 'status-indicator disconnected';
+            statusText.textContent = 'Session Expired';
+            isReady = false;
+            sendBtn.disabled = true;
+            broadcastBtn.disabled = true;
+            groupBtn.disabled = true;
+            hideSessionInfo();
+            lastQrText = null;
+            hasQr = false;
+            qrDiv.innerHTML = `
+                <div style="text-align: center; padding: 20px; color: var(--text-secondary);">
+                    <i class="fas fa-clock" style="font-size: 48px; margin-bottom: 15px; opacity: 0.5;"></i>
+                    <div>Session expired. Generating new QR code...</div>
+                </div>
+            `;
+            qrDisplay.classList.remove('active');
+            startQrPolling();
+        });
+
+        socket.on('reinitializing', (data) => {
+            statusBadge.className = 'status-badge waiting';
+            statusIndicator.className = 'status-indicator disconnected';
+            statusText.textContent = 'Reconnecting...';
+            isReady = false;
+            sendBtn.disabled = true;
+            broadcastBtn.disabled = true;
+            groupBtn.disabled = true;
+            hideSessionInfo();
+            lastQrText = null;
+            hasQr = false;
+            qrDiv.innerHTML = `
+                <div style="text-align: center; padding: 20px; color: var(--text-secondary);">
+                    <i class="fas fa-sync-alt fa-spin" style="font-size: 48px; margin-bottom: 15px; opacity: 0.5;"></i>
+                    <div>${data?.message || 'Reconnecting...'}</div>
+                </div>
+            `;
+            qrDisplay.classList.remove('active');
+            startQrPolling();
+        });
+
+        socket.on('status', (data) => {
+            if (data.ready) {
+                statusBadge.className = 'status-badge connected';
+                statusIndicator.className = 'status-indicator connected';
+                statusText.textContent = 'WhatsApp Connected';
+                isReady = true;
+                lastQrText = null;
+                stopQrPolling();
+                sendBtn.disabled = false;
+                broadcastBtn.disabled = false;
+                groupBtn.disabled = false;
+                sessionCard.classList.remove('hidden');
+                loadSessionInfo();
+                loadGroups();
+            } else if (data.qr || data.qrPng) {
+                const currentQrText = data.qr || data.qrPng;
+                if (currentQrText !== lastQrText) {
+                    lastQrText = currentQrText;
+                    statusBadge.className = 'status-badge waiting';
+                    statusIndicator.className = 'status-indicator disconnected';
+                    statusText.textContent = 'Scan QR code with WhatsApp';
+                    renderQr({ text: data.qr, png: data.qrPng }, 256);
+                    qrDisplay.classList.remove('active');
+                    startQrPolling();
+                }
+            }
+        });
+
+        // File upload handling with drag and drop
+        fileUploadArea.addEventListener('click', () => fileInput.click());
+        fileUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.add('dragover');
+        });
+        fileUploadArea.addEventListener('dragleave', () => {
+            fileUploadArea.classList.remove('dragover');
+        });
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                handleFileSelect(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                handleFileSelect(file);
+            }
+        });
+
+        function handleFileSelect(file) {
+            selectedFile = file;
+            fileInfo.innerHTML = `
+                <i class="fas fa-file"></i>
+                <div>
+                    <strong>${file.name}</strong><br>
+                    <small>${(file.size / 1024 / 1024).toFixed(2)} MB</small>
+                </div>
+                <button onclick="clearFile()" style="margin-left: auto; background: var(--error-color); color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer;">×</button>
+            `;
+            fileInfo.style.display = 'flex';
+            fileInfo.style.alignItems = 'center';
+            fileInfo.style.gap = '10px';
+        }
+
+        function clearFile() {
+            selectedFile = null;
+            fileInput.value = '';
+            fileInfo.innerHTML = '';
+            fileInfo.style.display = 'none';
+        }
+
+        // Single message form
+        messageForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!isReady) {
+                showNotification('WhatsApp is not connected!', 'error');
+                return;
+            }
+
+            const phoneNumber = document.getElementById('phoneNumber').value;
+            const message = document.getElementById('message').value;
+
+            if (!phoneNumber || !message) {
+                showNotification('Please fill in all required fields!', 'error');
+                return;
+            }
+
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Sending...</span>';
+
+            try {
+                const formData = {
+                    number: phoneNumber,
+                    message: message
+                };
+
+                if (selectedFile) {
+                    const base64 = await fileToBase64(selectedFile);
+                    formData.media = {
+                        data: base64,
+                        mimetype: selectedFile.type,
+                        filename: selectedFile.name
+                    };
+                }
+
+                const response = await fetch('/api/send-message', {
+                    method: 'POST',
+                    headers: getApiHeaders(),
+                    body: JSON.stringify(formData)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showNotification('Message sent successfully!', 'success');
+                    messageForm.reset();
+                    clearFile();
+                } else {
+                    showNotification('Error: ' + result.error, 'error');
+                }
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            }
+
+            sendBtn.disabled = false;
+            sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i><span>Send Message</span>';
+        });
+
+        // Broadcast form
+        broadcastForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!isReady) {
+                showNotification('WhatsApp is not connected!', 'error');
+                return;
+            }
+
+            const numbersText = broadcastNumbers.value;
+            const message = broadcastMessage.value;
+
+            if (!numbersText || !message) {
+                showNotification('Please fill in numbers and message!', 'error');
+                return;
+            }
+
+            const numbers = numbersText.split('\n').filter(num => num.trim());
+
+            if (numbers.length === 0) {
+                showNotification('Please enter at least one phone number!', 'error');
+                return;
+            }
+
+            broadcastBtn.disabled = true;
+            broadcastBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Sending...</span>';
+
+            try {
+                const formData = {
+                    numbers: numbers,
+                    message: message
+                };
+
+                if (selectedFile) {
+                    const base64 = await fileToBase64(selectedFile);
+                    formData.media = {
+                        data: base64,
+                        mimetype: selectedFile.type,
+                        filename: selectedFile.name
+                    };
+                }
+
+                const response = await fetch('/api/send-broadcast', {
+                    method: 'POST',
+                    headers: getApiHeaders(),
+                    body: JSON.stringify(formData)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    const successCount = result.results.filter(r => r.status === 'success').length;
+                    const errorCount = result.results.filter(r => r.status === 'error').length;
+                    showNotification(`Broadcast completed! ${successCount} sent, ${errorCount} failed.`, 'success');
+                    broadcastForm.reset();
+                    clearFile();
+                } else {
+                    showNotification('Error: ' + result.error, 'error');
+                }
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            }
+
+            broadcastBtn.disabled = false;
+            broadcastBtn.innerHTML = '<i class="fas fa-broadcast-tower"></i><span>Send Broadcast</span>';
+        });
+
+
+        // Helper functions
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => {
+                    const base64 = reader.result.split(',')[1];
+                    resolve(base64);
+                };
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        // Session management functions
+        async function loadSessionInfo() {
+            try {
+                const response = await fetch('/api/client-info', {
+                    headers: getApiHeaders()
+                });
+                const info = await response.json();
+
+                if (info.connected) {
+                    whatsappId.textContent = info.wid || 'Unknown';
+                    displayName.textContent = info.pushname || 'WhatsApp User';
+                    platform.textContent = info.platform || 'Unknown';
+                    connectionStatus.textContent = 'Connected';
+                    profileStatus.textContent = 'Active';
+                    sessionCard.classList.remove('hidden');
+
+                    // Handle profile picture
+                    if (info.profilePicture && info.profilePicture.length > 0) {
+                        profilePicPlaceholder.innerHTML = `<img src="${info.profilePicture}" alt="Profile Picture" class="profile-avatar" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-mobile-alt\\'></i>'">`;
+                    } else {
+                        profilePicPlaceholder.innerHTML = '<i class="fas fa-mobile-alt"></i>';
+                    }
+
+                    profileName.textContent = info.pushname || 'WhatsApp User';
+                }
+            } catch (error) {
+                console.error('Error loading session info:', error);
+                showNotification('Error loading session info', 'error');
+            }
+        }
+
+        function hideSessionInfo() {
+            whatsappId.textContent = 'Not Connected';
+            displayName.textContent = 'Not Connected';
+            platform.textContent = 'Not Connected';
+            connectionStatus.textContent = 'Disconnected';
+            profileStatus.textContent = 'Disconnected';
+            profilePicPlaceholder.innerHTML = '<i class="fas fa-mobile-alt"></i>';
+            profileName.textContent = 'Not Connected';
+            sessionCard.classList.add('hidden');
+        }
+
+
+        // Logout functionality
+        logoutBtn.addEventListener('click', async () => {
+            if (!isReady) {
+                showNotification('WhatsApp is not connected!', 'error');
+                return;
+            }
+
+            if (!confirm('Are you sure you want to disconnect? This will end your WhatsApp session and generate a new QR code.')) {
+                return;
+            }
+
+            logoutBtn.disabled = true;
+            logoutBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Disconnecting...</span>';
+
+            try {
+                const response = await fetch('/api/logout', {
+                    method: 'POST',
+                    headers: getApiHeaders()
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showNotification('Disconnected successfully! Generating new QR code...', 'success');
+                    hideSessionInfo();
+                    statusBadge.className = 'status-badge waiting';
+                    statusIndicator.className = 'status-indicator disconnected';
+                    statusText.textContent = 'Disconnected';
+                    qrDiv.innerHTML = `
+                        <div style="text-align: center; padding: 20px; color: var(--text-secondary);">
+                            <i class="fas fa-sync-alt fa-spin" style="font-size: 48px; margin-bottom: 15px; opacity: 0.5;"></i>
+                            <div>Generating new QR code...</div>
+                        </div>
+                    `;
+                    qrDisplay.classList.remove('active');
+                } else {
+                    showNotification('Error: ' + result.error, 'error');
+                }
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            }
+
+            logoutBtn.disabled = false;
+            logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i><span>Disconnect</span>';
+        });
+
+        // Quick action buttons
+        refreshStatusBtn.addEventListener('click', async () => {
+            if (!isReady) {
+                showNotification('WhatsApp is not connected!', 'error');
+                return;
+            }
+
+            refreshStatusBtn.disabled = true;
+            refreshStatusBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Refreshing...</span>';
+
+            try {
+                await loadSessionInfo();
+                showNotification('Status refreshed successfully!', 'success');
+            } catch (error) {
+                showNotification('Error refreshing status', 'error');
+            }
+
+            refreshStatusBtn.disabled = false;
+            refreshStatusBtn.innerHTML = '<i class="fas fa-sync-alt"></i><span>Refresh Status</span>';
+        });
+
+        clearCacheBtn.addEventListener('click', () => {
+            localStorage.clear();
+            showNotification('Cache cleared! Refresh the page to apply changes.', 'info');
+        });
+
+
+        // Copy to clipboard functionality
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent;
+
+            navigator.clipboard.writeText(text).then(() => {
+                showNotification('Copied to clipboard!', 'success');
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                showNotification('Failed to copy to clipboard', 'error');
+            });
+        }
+
+        // Group functionality
+        async function loadGroups() {
+            try {
+                groupSelect.innerHTML = '<option value="">Loading groups...</option>';
+
+                const response = await fetch('/api/groups', {
+                    headers: getApiHeaders()
+                });
+                const groups = await response.json();
+
+                groupSelect.innerHTML = '<option value="">Select a group...</option>';
+
+                if (groups && groups.length > 0) {
+                    groups.forEach(group => {
+                        const option = document.createElement('option');
+                        option.value = group.id;
+                        option.textContent = `${group.name} (${group.participants} members)`;
+                        groupSelect.appendChild(option);
+                    });
+                    showNotification(`Loaded ${groups.length} groups`, 'success');
+                } else {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'No groups found';
+                    groupSelect.appendChild(option);
+                    showNotification('No groups found. Make sure you are in some WhatsApp groups.', 'error');
+                }
+            } catch (error) {
+                console.error('Error loading groups:', error);
+                groupSelect.innerHTML = '<option value="">Error loading groups</option>';
+                showNotification('Error loading groups: ' + error.message, 'error');
+            }
+        }
+
+        // Refresh groups button
+        refreshGroupsBtn.addEventListener('click', () => {
+            if (isReady) {
+                loadGroups();
+            } else {
+                showNotification('WhatsApp is not connected!', 'error');
+            }
+        });
+
+        // Group message form
+        groupForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!isReady) {
+                showNotification('WhatsApp is not connected!', 'error');
+                return;
+            }
+
+            const groupId = groupSelect.value;
+            const message = groupMessage.value;
+
+            if (!groupId || !message) {
+                showNotification('Please select a group and enter a message!', 'error');
+                return;
+            }
+
+            groupBtn.disabled = true;
+            groupBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Sending...</span>';
+
+            try {
+                const formData = {
+                    groupId: groupId,
+                    message: message
+                };
+
+                if (selectedFile) {
+                    const base64 = await fileToBase64(selectedFile);
+                    formData.media = {
+                        data: base64,
+                        mimetype: selectedFile.type,
+                        filename: selectedFile.name
+                    };
+                }
+
+                const response = await fetch('/api/send-group-message', {
+                    method: 'POST',
+                    headers: getApiHeaders(),
+                    body: JSON.stringify(formData)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showNotification('Group message sent successfully!', 'success');
+                    groupForm.reset();
+                    clearFile();
+                } else {
+                    showNotification('Error: ' + result.error, 'error');
+                }
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            }
+
+            groupBtn.disabled = false;
+            groupBtn.innerHTML = '<i class="fas fa-users"></i><span>Send to Group</span>';
+        });
+
+        // Webhook functionality
+        setWebhookBtn.addEventListener('click', async () => {
+            const url = webhookUrl.value;
+            if (!url) {
+                showNotification('Please enter a webhook URL!', 'error');
+                return;
+            }
+
+            setWebhookBtn.disabled = true;
+            setWebhookBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Setting...</span>';
+
+            try {
+                const response = await fetch('/api/webhook', {
+                    method: 'POST',
+                    headers: getApiHeaders(),
+                    body: JSON.stringify({ url: url })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    showNotification('Webhook set successfully!', 'success');
+                } else {
+                    showNotification('Error: ' + result.error, 'error');
+                }
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            }
+
+            setWebhookBtn.disabled = false;
+            setWebhookBtn.innerHTML = 'Set Webhook';
+        });
+
+        getWebhookBtn.addEventListener('click', async () => {
+            getWebhookBtn.disabled = true;
+            getWebhookBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Getting...</span>';
+
+            try {
+                const response = await fetch('/api/webhook', {
+                    headers: getApiHeaders()
+                });
+                const result = await response.json();
+                webhookUrl.value = result.webhookUrl || '';
+                showNotification('Webhook URL retrieved!', 'success');
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            }
+
+            getWebhookBtn.disabled = false;
+            getWebhookBtn.innerHTML = 'Get Webhook';
+        });
+
+        deleteWebhookBtn.addEventListener('click', async () => {
+            deleteWebhookBtn.disabled = true;
+            deleteWebhookBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Deleting...</span>';
+
+            try {
+                const response = await fetch('/api/webhook', {
+                    method: 'DELETE',
+                    headers: getApiHeaders()
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    webhookUrl.value = '';
+                    showNotification('Webhook deleted successfully!', 'success');
+                } else {
+                    showNotification('Error: ' + result.error, 'error');
+                }
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            }
+
+            deleteWebhookBtn.disabled = false;
+            deleteWebhookBtn.innerHTML = 'Delete Webhook';
+        });
+
+        // API Key Management Functions
+        function saveApiKey() {
+            const apiKeyInput = document.getElementById('apiKeyInput');
+            const key = apiKeyInput.value.trim();
+            
+            if (!key) {
+                showNotification('Please enter an API key', 'error');
+                return;
+            }
+            
+            apiKey = key;
+            localStorage.setItem('whatsapp_api_key', key);
+            apiKeyInput.value = key;
+            showNotification('API key saved successfully!', 'success');
+            
+            // Reload session info with new API key
+            loadSessionInfo();
+        }
+        
+        function showGenerateKeyModal() {
+            document.getElementById('generateKeyModal').style.display = 'block';
+        }
+        
+        function closeGenerateKeyModal() {
+            document.getElementById('generateKeyModal').style.display = 'none';
+            document.getElementById('masterKeyInput').value = '';
+            document.getElementById('generatedKeyDisplay').style.display = 'none';
+        }
+        
+        async function generateApiKey() {
+            const masterKey = document.getElementById('masterKeyInput').value.trim();
+            
+            if (!masterKey) {
+                showNotification('Please enter the master key', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${baseUrl}/api/generate-key`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ masterKey })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    document.getElementById('generatedKey').textContent = result.apiKey;
+                    document.getElementById('generatedKeyDisplay').style.display = 'block';
+                    showNotification('API key generated successfully!', 'success');
+                } else {
+                    showNotification('Error: ' + result.error, 'error');
+                }
+            } catch (error) {
+                showNotification('Error generating API key: ' + error.message, 'error');
+            }
+        }
+        
+        function copyApiKey() {
+            const generatedKey = document.getElementById('generatedKey').textContent;
+            navigator.clipboard.writeText(generatedKey).then(() => {
+                showNotification('API key copied to clipboard!', 'success');
+            }).catch(() => {
+                showNotification('Failed to copy API key', 'error');
+            });
+        }
+        
+        // Load initial data when page loads
+        window.addEventListener('load', async () => {
+            // Load server configuration first
+            await loadServerConfig();
+            
+            // Load saved API key
+            const apiKeyInput = document.getElementById('apiKeyInput');
+            if (apiKey) {
+                apiKeyInput.value = apiKey;
+            }
+            // Check if WhatsApp is already connected
+            fetch('/api/status', {
+                headers: getApiHeaders()
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.ready) {
+                        isReady = true;
+                        sendBtn.disabled = false;
+                        broadcastBtn.disabled = false;
+                        sessionCard.classList.remove('hidden');
+                        loadSessionInfo();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking initial status:', error);
+                });
+        });
+    </script>
+
+    <!-- API Key Generation Modal -->
+    <div id="generateKeyModal" class="modal" style="display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+        <div class="modal-content" style="background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; border-radius: 8px; width: 400px;">
+            <span class="close" onclick="closeGenerateKeyModal()" style="color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
+            <h3>Generate New API Key</h3>
+            <p>Enter the master key to generate a new API key:</p>
+            <input type="password" id="masterKeyInput" placeholder="Enter master key" style="width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px;">
+            <button onclick="generateApiKey()" style="background: #25d366; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">
+                Generate API Key
+            </button>
+            <div id="generatedKeyDisplay" style="margin-top: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; display: none;">
+                <strong>Generated API Key:</strong>
+                <div id="generatedKey" style="word-break: break-all; font-family: monospace; margin-top: 5px;"></div>
+                <button onclick="copyApiKey()" style="background: #667eea; color: white; padding: 5px 10px; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px;">
+                    Copy to Clipboard
+                </button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

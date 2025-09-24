@@ -28,6 +28,9 @@ RUN npm ci --only=production
 # Copy application code
 COPY . .
 
+# Ensure public directory exists and has correct permissions
+RUN mkdir -p public && chmod 755 public
+
 # Create directory for WhatsApp session data
 RUN mkdir -p .wwebjs_auth .wwebjs_cache chrome-data
 
