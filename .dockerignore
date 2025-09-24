@@ -193,4 +193,4 @@ Thumbs.db
 .wwebjs_cache
 
 # API keys (will be mounted as volume)
-api-keys.json
+
