@@ -29,7 +29,7 @@ RUN npm ci --only=production
 COPY . .
 
 # Create directory for WhatsApp session data
-RUN mkdir -p .wwebjs_auth .wwebjs_cache
+RUN mkdir -p .wwebjs_auth .wwebjs_cache chrome-data
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs

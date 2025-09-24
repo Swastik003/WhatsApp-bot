@@ -13,6 +13,8 @@ services:
       # Persist WhatsApp session data
       - whatsapp_session:/app/.wwebjs_auth
       - whatsapp_cache:/app/.wwebjs_cache
+      # Persist Chromium user data directory
+      - chrome_data:/app/chrome-data
       # Persist API keys
       - ./api-keys.json:/app/api-keys.json
     networks:
@@ -41,6 +43,8 @@ volumes:
   whatsapp_session:
     driver: local
   whatsapp_cache:
+    driver: local
+  chrome_data:
     driver: local
 
 networks:

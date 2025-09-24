@@ -99,6 +99,33 @@ try {
     console.warn('Chromium temp cleanup warning:', e.message);
 }
 
+// Ensure dedicated Chrome user data directory exists and is clean of locks
+const CHROME_USER_DATA_DIR = path.join(__dirname, 'chrome-data');
+try {
+    fs.ensureDirSync(CHROME_USER_DATA_DIR);
+    const lockFiles = [
+        'SingletonLock',
+        'SingletonCookie',
+        'SingletonSocket',
+        'LOCK',
+    ];
+    for (const name of lockFiles) {
+        const p = path.join(CHROME_USER_DATA_DIR, name);
+        try { if (fs.existsSync(p)) fs.removeSync(p); } catch (_) { /* ignore */ }
+    }
+    // Also purge any org.chromium.* remnants
+    try {
+        const entries = fs.readdirSync(CHROME_USER_DATA_DIR);
+        for (const entry of entries) {
+            if (entry.startsWith('.org.chromium.')) {
+                try { fs.removeSync(path.join(CHROME_USER_DATA_DIR, entry)); } catch (_) { /* ignore */ }
+            }
+        }
+    } catch (_) {}
+} catch (e) {
+    console.warn('Chrome user-data dir init warning:', e.message);
+}
+
 // WhatsApp client configuration
 const client = new Client({
     authStrategy: new LocalAuth({
@@ -116,7 +143,9 @@ const client = new Client({
             '--no-zygote',
             '--disable-gpu',
             '--password-store=basic',
-            '--use-mock-keychain'
+            '--use-mock-keychain',
+            `--user-data-dir=${CHROME_USER_DATA_DIR}`,
+            '--profile-directory=Default'
         ]
     }
 });
