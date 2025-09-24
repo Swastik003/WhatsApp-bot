@@ -39,6 +39,7 @@ const upload = multer({
 // Clean up common Chromium/Puppeteer temp profile lock files (container-safe)
 try {
     const tmpDir = '/tmp';
+    const forcedProfileDir = process.env.CHROME_USER_DATA_DIR || path.join(tmpDir, 'puppeteer_profile');
     const candidates = [
         // Puppeteer temp profiles
         'puppeteer_dev_profile-',
@@ -56,6 +57,9 @@ try {
             try { fs.removeSync(target); } catch (_) { /* ignore */ }
         }
     }
+    // Ensure a clean, dedicated user data dir to avoid cross-container locks
+    try { fs.removeSync(forcedProfileDir); } catch (_) { /* ignore */ }
+    try { fs.ensureDirSync(forcedProfileDir); } catch (_) { /* ignore */ }
 } catch (e) {
     console.warn('Chromium temp cleanup warning:', e.message);
 }
@@ -68,6 +72,7 @@ const client = new Client({
     puppeteer: {
         headless: true,
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+        userDataDir: process.env.CHROME_USER_DATA_DIR || '/tmp/puppeteer_profile',
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -75,7 +80,10 @@ const client = new Client({
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--disable-gpu'
+            '--disable-gpu',
+            `--user-data-dir=${process.env.CHROME_USER_DATA_DIR || '/tmp/puppeteer_profile'}`,
+            '--password-store=basic',
+            '--use-mock-keychain'
         ]
     }
 });
