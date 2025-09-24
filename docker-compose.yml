@@ -5,6 +5,7 @@ services:
     build: .
     container_name: whatsapp-qr-scanner
     restart: unless-stopped
+    user: "0:0"
     ports:
       - "3005:3000"
     env_file:
@@ -19,6 +20,12 @@ services:
       - ./api-keys.json:/app/api-keys.json
     networks:
       - whatsapp-network
+    command: >-
+      sh -c "\
+      chown -R 1001:1001 /app/chrome-data /app/.wwebjs_auth /app/.wwebjs_cache 2>/dev/null || true; \
+      rm -f /app/chrome-data/SingletonLock /app/chrome-data/SingletonCookie /app/chrome-data/SingletonSocket /app/chrome-data/LOCK 2>/dev/null || true; \
+      find /app/chrome-data -maxdepth 1 -type f -name '.org.chromium.*' -exec rm -f {} + 2>/dev/null || true; \
+      su whatsapp -s /bin/sh -c 'npm start'"
     # Resource limits
     deploy:
       resources:
